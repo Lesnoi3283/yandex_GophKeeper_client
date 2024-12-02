@@ -9,9 +9,7 @@ import (
 	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 
-// RegisterUser sends registration request to the backend and returns JWT string or error.
-// If http status code != 201 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
-func (h *Handler) RegisterUser(login string, password string) (jwt string, err error) {
+func (h *Handler) Login(login string, password string) (jwt string, err error) {
 	user := entities.User{
 		Login:    login,
 		Password: password,
@@ -22,7 +20,7 @@ func (h *Handler) RegisterUser(login string, password string) (jwt string, err e
 	if err != nil {
 		return "", fmt.Errorf("can`t marshal user: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, h.Conf.APIAddress+registration_path, bytes.NewReader(jsonUser))
+	req, err := http.NewRequest(http.MethodPost, h.Conf.APIAddress+login_path, bytes.NewReader(jsonUser))
 	if err != nil {
 		return "", fmt.Errorf("can`t create request: %v", err)
 	}
@@ -36,7 +34,7 @@ func (h *Handler) RegisterUser(login string, password string) (jwt string, err e
 	defer resp.Body.Close()
 
 	//read request
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusOK {
 		return "", gophKeeperErrors.NewErrWithHTTPCode(resp.StatusCode, fmt.Sprintf("Server`s response has status code `%v`", resp.StatusCode))
 	}
 
