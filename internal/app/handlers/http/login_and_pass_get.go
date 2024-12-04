@@ -1,13 +1,10 @@
-package handlers
+package http
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
-	"yandex_GophKeeper_client/internal/app/entities"
 	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 

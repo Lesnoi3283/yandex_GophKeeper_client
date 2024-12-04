@@ -1,4 +1,4 @@
-package handlers
+package http
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"yandex_GophKeeper_client/internal/app/entities"
+	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 
 // SendBankCard sends bank card data to the backend.

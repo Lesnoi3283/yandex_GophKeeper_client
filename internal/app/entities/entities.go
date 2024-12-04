@@ -16,3 +16,8 @@ type BankCard struct {
 	OwnerLastname  string `json:"owner_lastname"`
 	OwnerFirstname string `json:"owner_firstname"`
 }
+
+type TextData struct {
+	TextName string `json:"text_name"`
+	Text     string `json:"text"`
+}

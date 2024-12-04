@@ -1,4 +1,4 @@
-package handlers
+package http
 
 import (
 	"yandex_GophKeeper_client/config"
