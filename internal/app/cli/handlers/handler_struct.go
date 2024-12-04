@@ -25,5 +25,6 @@ const (
 type Handler struct {
 	Conf       config.AppConfig
 	HTTPClient requiredInterfaces.HTTPClient
+	JWT        string
 	//logger *zap.SugaredLogger //todo: maybe unnecessary. Delete before merge request if it`s still unused.
 }

@@ -9,6 +9,8 @@ import (
 	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 
+// Login sends request with user data to API and returns jwt or error.
+// If http status code != 200 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
 func (h *Handler) Login(login string, password string) (jwt string, err error) {
 	user := entities.User{
 		Login:    login,
