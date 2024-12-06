@@ -11,7 +11,7 @@ import (
 
 // SendLoginAndPassword sends login and password to the backend.
 // If http status code != 201 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
-func (h *Handler) SendLoginAndPassword(login string, password string) error {
+func (h *Requester) SendLoginAndPassword(login string, password string) error {
 	data := entities.LoginAndPassword{
 		Login:    login,
 		Password: password,
@@ -22,10 +22,14 @@ func (h *Handler) SendLoginAndPassword(login string, password string) error {
 	if err != nil {
 		return fmt.Errorf("cant marshal login and password, err: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, save_login_and_password_path, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest(http.MethodPost, h.ApiAddress+"/"+saveLoginAndPasswordPath, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("cant create request, err: %w", err)
 	}
+	req.AddCookie(&http.Cookie{
+		Name:  JwtCookieName,
+		Value: h.JWT,
+	})
 	req.Header.Set("Content-Type", "application/json")
 
 	//send request

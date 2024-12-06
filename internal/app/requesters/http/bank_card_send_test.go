@@ -13,19 +13,21 @@ import (
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces/mocks"
 )
 
-func TestHandler_GetLoginAndPassword(t *testing.T) {
+func TestHandler_SendBankCard(t *testing.T) {
 	type fields struct {
 		Conf       config.AppConfig
 		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
-		login string
+		PAN            string
+		OwnerFirstName string
+		OwnerLastName  string
+		ExpiresAt      string
 	}
 	tests := []struct {
 		name       string
 		fields     fields
 		args       args
-		wantPwd    string
 		wantErr    bool
 		httpStatus int
 		httpBody   string
@@ -36,25 +38,27 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(lt, http.MethodGet, req.Method, "request method must be GET")
-						assert.Equal(lt, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
+						assert.Equal(lt, http.MethodPost, req.Method, "request method must be POST")
+						assert.Equal(lt, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
 
 						bodyBytes, err := io.ReadAll(req.Body)
 						assert.NoError(lt, err, "cant read request body")
-						assert.Equal(lt, "testlogin@example.com", string(bodyBytes), "wrong request body")
+						expectedBody := `{"PAN":"1234567890123456","expires_at":"12/24","owner_lastname":"Ivanov","owner_firstname":"Ivan"}`
+						assert.Equal(lt, expectedBody, string(bodyBytes), "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusOK)
-						responseWriter.Write([]byte("testpassword"))
+						responseWriter.WriteHeader(http.StatusCreated)
 						return responseWriter.Result(), nil
 					})
 					return client
 				},
 			},
 			args: args{
-				login: "testlogin@example.com",
+				PAN:            "1234567890123456",
+				OwnerFirstName: "Ivan",
+				OwnerLastName:  "Ivanov",
+				ExpiresAt:      "12/24",
 			},
-			wantPwd: "testpassword",
 			wantErr: false,
 		},
 		{
@@ -71,28 +75,11 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 				},
 			},
 			args: args{
-				login: "testlogin@example.com",
+				PAN:            "1234567890123456",
+				OwnerFirstName: "Ivan",
+				OwnerLastName:  "Ivanov",
+				ExpiresAt:      "12/24",
 			},
-			wantPwd: "",
-			wantErr: true,
-		},
-		{
-			name: "Empty response body",
-			fields: fields{
-				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
-					client := mocks.NewMockHTTPClient(c)
-					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusOK)
-						return responseWriter.Result(), nil
-					})
-					return client
-				},
-			},
-			args: args{
-				login: "testlogin@example.com",
-			},
-			wantPwd: "",
 			wantErr: true,
 		},
 		{
@@ -105,9 +92,11 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 				},
 			},
 			args: args{
-				login: "testlogin@example.com",
+				PAN:            "1234567890123456",
+				OwnerFirstName: "Ivan",
+				OwnerLastName:  "Ivanov",
+				ExpiresAt:      "12/24",
 			},
-			wantPwd: "",
 			wantErr: true,
 		},
 	}
@@ -115,18 +104,16 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := gomock.NewController(t)
-			h := &Handler{
+			h := &Requester{
 				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
-			gotPwd, err := h.GetLoginAndPassword(tt.args.login)
+			err := h.SendBankCard(tt.args.PAN, tt.args.OwnerFirstName, tt.args.OwnerLastName, tt.args.ExpiresAt)
 
 			if tt.wantErr {
 				assert.Error(t, err, "expected an error but got none")
 			} else {
 				assert.NoError(t, err, "unexpected error occurred")
 			}
-
-			assert.Equal(t, tt.wantPwd, gotPwd, "unexpected password")
 		})
 	}
 }

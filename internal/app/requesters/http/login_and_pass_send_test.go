@@ -8,17 +8,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"yandex_GophKeeper_client/config"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces/mocks"
 )
 
-func TestHandler_SendText(t *testing.T) {
+func TestHandler_SendLoginAndPassword(t *testing.T) {
 	type fields struct {
+		Conf       config.AppConfig
 		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
-		textName string
-		text     string
+		login    string
+		password string
 	}
 	tests := []struct {
 		name       string
@@ -26,9 +28,10 @@ func TestHandler_SendText(t *testing.T) {
 		args       args
 		wantErr    bool
 		httpStatus int
+		httpBody   string
 	}{
 		{
-			name: "Valid response",
+			name: "Normal response",
 			fields: fields{
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
@@ -37,9 +40,9 @@ func TestHandler_SendText(t *testing.T) {
 						assert.Equal(lt, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
 
 						bodyBytes, err := io.ReadAll(req.Body)
-						assert.NoError(lt, err, "can`t read request body")
-						expectedBody := `{"text_name":"example text","text":"This is a test text"}`
-						assert.JSONEq(lt, expectedBody, string(bodyBytes), "wrong request body")
+						assert.NoError(lt, err, "cant read request body")
+						expectedBody := `{"login":"testlogin@example.com","password":"testpassword"}`
+						assert.Equal(lt, expectedBody, string(bodyBytes), "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
 						responseWriter.WriteHeader(http.StatusCreated)
@@ -49,8 +52,8 @@ func TestHandler_SendText(t *testing.T) {
 				},
 			},
 			args: args{
-				textName: "example text",
-				text:     "This is a test text",
+				login:    "testlogin@example.com",
+				password: "testpassword",
 			},
 			wantErr: false,
 		},
@@ -68,8 +71,8 @@ func TestHandler_SendText(t *testing.T) {
 				},
 			},
 			args: args{
-				textName: "exampleText",
-				text:     "This is a test text",
+				login:    "testlogin@example.com",
+				password: "testpassword",
 			},
 			wantErr: true,
 		},
@@ -83,8 +86,8 @@ func TestHandler_SendText(t *testing.T) {
 				},
 			},
 			args: args{
-				textName: "exampleText",
-				text:     "This is a test text",
+				login:    "testlogin@example.com",
+				password: "testpassword",
 			},
 			wantErr: true,
 		},
@@ -93,10 +96,10 @@ func TestHandler_SendText(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := gomock.NewController(t)
-			h := &Handler{
+			h := &Requester{
 				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
-			err := h.SendText(tt.args.textName, tt.args.text)
+			err := h.SendLoginAndPassword(tt.args.login, tt.args.password)
 
 			if tt.wantErr {
 				assert.Error(t, err, "expected an error but got none")

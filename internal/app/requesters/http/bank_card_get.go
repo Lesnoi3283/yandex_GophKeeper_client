@@ -12,12 +12,16 @@ import (
 
 // GetBankCard sends last 4 digits of a bank card to the backend and returns password or error.
 // If http status code != 200 - returns a gophKeeperErrors.ErrWithHTTPCode.
-func (h *Handler) GetBankCard(lastFourDigits string) (entities.BankCard, error) {
+func (h *Requester) GetBankCard(lastFourDigits string) (entities.BankCard, error) {
 	//prepare request
-	req, err := http.NewRequest(http.MethodGet, get_login_and_password_path, bytes.NewBufferString(lastFourDigits))
+	req, err := http.NewRequest(http.MethodGet, h.ApiAddress+"/"+getBankCardPath, bytes.NewBufferString(lastFourDigits))
 	if err != nil {
 		return entities.BankCard{}, fmt.Errorf("cant create request, err: %w", err)
 	}
+	req.AddCookie(&http.Cookie{
+		Name:  JwtCookieName,
+		Value: h.JWT,
+	})
 	req.Header.Set("Content-Type", "text/plain")
 
 	//send request

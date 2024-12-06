@@ -10,12 +10,16 @@ import (
 
 // GetText text name to the backend and returns text data or error.
 // If http status code != 200 - returns a gophKeeperErrors.ErrWithHTTPCode.
-func (h *Handler) GetText(lastFourDigits string) (string, error) {
+func (h *Requester) GetText(textName string) (string, error) {
 	//prepare request
-	req, err := http.NewRequest(http.MethodGet, get_text_path, bytes.NewBufferString(lastFourDigits))
+	req, err := http.NewRequest(http.MethodGet, h.ApiAddress+"/"+getTextPath, bytes.NewBufferString(textName))
 	if err != nil {
 		return "", fmt.Errorf("cant create request, err: %w", err)
 	}
+	req.AddCookie(&http.Cookie{
+		Name:  JwtCookieName,
+		Value: h.JWT,
+	})
 	req.Header.Set("Content-Type", "text/plain")
 
 	//send request

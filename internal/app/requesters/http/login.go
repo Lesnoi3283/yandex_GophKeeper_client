@@ -9,9 +9,9 @@ import (
 	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 
-// RegisterUser sends registration request to the backend and returns JWT string or error.
-// If http status code != 201 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
-func (h *Handler) RegisterUser(login string, password string) (jwt string, err error) {
+// Login sends request with user data to API and returns jwt or error.
+// If http status code != 200 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
+func (h *Requester) Login(login string, password string) (jwt string, err error) {
 	user := entities.User{
 		Login:    login,
 		Password: password,
@@ -22,7 +22,7 @@ func (h *Handler) RegisterUser(login string, password string) (jwt string, err e
 	if err != nil {
 		return "", fmt.Errorf("can`t marshal user: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, h.Conf.APIAddress+registration_path, bytes.NewReader(jsonUser))
+	req, err := http.NewRequest(http.MethodGet, h.ApiAddress+"/"+loginPath, bytes.NewReader(jsonUser))
 	if err != nil {
 		return "", fmt.Errorf("can`t create request: %v", err)
 	}
@@ -36,13 +36,13 @@ func (h *Handler) RegisterUser(login string, password string) (jwt string, err e
 	defer resp.Body.Close()
 
 	//read request
-	if resp.StatusCode != http.StatusCreated {
+	if resp.StatusCode != http.StatusOK {
 		return "", gophKeeperErrors.NewErrWithHTTPCode(resp.StatusCode, fmt.Sprintf("Server`s response has status code `%v`", resp.StatusCode))
 	}
 
 	//get jwt from cookies
 	for _, cookie := range resp.Cookies() {
-		if cookie.Name == JWT_cookie_name {
+		if cookie.Name == JwtCookieName {
 			if cookie.Value != "" {
 				return cookie.Value, nil
 			} else {
@@ -50,5 +50,5 @@ func (h *Handler) RegisterUser(login string, password string) (jwt string, err e
 			}
 		}
 	}
-	return "", fmt.Errorf("no cookies with name `%v`", JWT_cookie_name)
+	return "", fmt.Errorf("no cookies with name `%v`", JwtCookieName)
 }

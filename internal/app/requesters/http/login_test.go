@@ -8,81 +8,43 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"yandex_GophKeeper_client/config"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces/mocks"
 )
 
-func TestHandler_GetText(t *testing.T) {
+func TestHandler_Login(t *testing.T) {
 	type fields struct {
-		Conf       config.AppConfig
 		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
-		lastFourDigits string
+		login    string
+		password string
 	}
 	tests := []struct {
-		name       string
-		fields     fields
-		args       args
-		wantText   string
-		wantErr    bool
-		httpStatus int
-		httpBody   string
+		name    string
+		fields  fields
+		args    args
+		wantJwt string
+		wantErr bool
 	}{
 		{
-			name: "Valid response",
+			name: "Normal",
 			fields: fields{
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(lt, http.MethodGet, req.Method, "request method must be GET")
-						assert.Equal(lt, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
-
+						assert.Equal(lt, http.MethodPost, req.Method, "request method must be POST")
+						assert.Equal(lt, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
 						bodyBytes, err := io.ReadAll(req.Body)
-						assert.NoError(lt, err, "can`t read request body")
-						assert.Equal(lt, "1234", string(bodyBytes), "wrong request body")
+						assert.NoError(lt, err, "cant read request body")
+						body := string(bodyBytes)
+						assert.Equal(lt, `{"login":"testlogin@example.com","password":"testpassword"}`, body, "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusOK)
-						responseWriter.WriteString("Expected Text Content")
-						return responseWriter.Result(), nil
-					})
-					return client
-				},
-			},
-			args: args{
-				lastFourDigits: "1234",
-			},
-			wantText: "Expected Text Content",
-			wantErr:  false,
-		},
-		{
-			name: "Bad request response",
-			fields: fields{
-				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
-					client := mocks.NewMockHTTPClient(c)
-					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusBadRequest)
-						return responseWriter.Result(), nil
-					})
-					return client
-				},
-			},
-			args: args{
-				lastFourDigits: "1234",
-			},
-			wantText: "",
-			wantErr:  true,
-		},
-		{
-			name: "Empty response body",
-			fields: fields{
-				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
-					client := mocks.NewMockHTTPClient(c)
-					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						responseWriter := httptest.NewRecorder()
+						http.SetCookie(responseWriter, &http.Cookie{
+							Name:  JwtCookieName,
+							Value: "test.jwt.token",
+						})
 						responseWriter.WriteHeader(http.StatusOK)
 						return responseWriter.Result(), nil
 					})
@@ -90,13 +52,34 @@ func TestHandler_GetText(t *testing.T) {
 				},
 			},
 			args: args{
-				lastFourDigits: "1234",
+				login:    "testlogin@example.com",
+				password: "testpassword",
 			},
-			wantText: "",
-			wantErr:  false,
+			wantJwt: "test.jwt.token",
+			wantErr: false,
 		},
 		{
-			name: "HTTP client error",
+			name: "Internal Server Error (no cookie)",
+			fields: fields{
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
+					client := mocks.NewMockHTTPClient(c)
+					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+						responseWriter := httptest.NewRecorder()
+						responseWriter.WriteHeader(http.StatusInternalServerError)
+						return responseWriter.Result(), nil
+					})
+					return client
+				},
+			},
+			args: args{
+				login:    "testlogin@example.com",
+				password: "testpassword",
+			},
+			wantJwt: "",
+			wantErr: true,
+		},
+		{
+			name: "HTTP Client error",
 			fields: fields{
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
@@ -105,28 +88,48 @@ func TestHandler_GetText(t *testing.T) {
 				},
 			},
 			args: args{
-				lastFourDigits: "1234",
+				login:    "testlogin@example.com",
+				password: "testpassword",
 			},
-			wantText: "",
-			wantErr:  true,
+			wantJwt: "",
+			wantErr: true,
+		},
+		{
+			name: "Status created, but no cookie",
+			fields: fields{
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
+					client := mocks.NewMockHTTPClient(c)
+					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+						responseWriter := httptest.NewRecorder()
+						responseWriter.WriteHeader(http.StatusCreated)
+						return responseWriter.Result(), nil
+					})
+					return client
+				},
+			},
+			args: args{
+				login:    "testlogin@example.com",
+				password: "testpassword",
+			},
+			wantJwt: "",
+			wantErr: true,
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := gomock.NewController(t)
-			h := &Handler{
+			h := &Requester{
 				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
-			gotText, err := h.GetText(tt.args.lastFourDigits)
+			gotJwt, err := h.Login(tt.args.login, tt.args.password)
 
 			if tt.wantErr {
-				assert.Error(t, err, "expected an error but got none")
+				assert.Error(t, err, "no error, but have to")
 			} else {
-				assert.NoError(t, err, "unexpected error occurred")
+				assert.NoError(t, err, "some error have happened")
 			}
 
-			assert.Equal(t, tt.wantText, gotText, "unexpected text content")
+			assert.Equal(t, tt.wantJwt, gotJwt, "wrong jwt value")
 		})
 	}
 }

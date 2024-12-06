@@ -9,9 +9,9 @@ import (
 	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 
-// Login sends request with user data to API and returns jwt or error.
-// If http status code != 200 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
-func (h *Handler) Login(login string, password string) (jwt string, err error) {
+// RegisterUser sends registration request to the backend and returns JWT string or error.
+// If http status code != 201 - this func returns a gophKeeperErrors.ErrWithHTTPCode.
+func (h *Requester) RegisterUser(login string, password string) (jwt string, err error) {
 	user := entities.User{
 		Login:    login,
 		Password: password,
@@ -22,10 +22,14 @@ func (h *Handler) Login(login string, password string) (jwt string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("can`t marshal user: %v", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, h.Conf.APIAddress+login_path, bytes.NewReader(jsonUser))
+	req, err := http.NewRequest(http.MethodPost, h.ApiAddress+"/"+registrationPath, bytes.NewReader(jsonUser))
 	if err != nil {
 		return "", fmt.Errorf("can`t create request: %v", err)
 	}
+	req.AddCookie(&http.Cookie{
+		Name:  JwtCookieName,
+		Value: h.JWT,
+	})
 	req.Header.Set("Content-Type", "application/json")
 
 	//send request
@@ -36,13 +40,13 @@ func (h *Handler) Login(login string, password string) (jwt string, err error) {
 	defer resp.Body.Close()
 
 	//read request
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated {
 		return "", gophKeeperErrors.NewErrWithHTTPCode(resp.StatusCode, fmt.Sprintf("Server`s response has status code `%v`", resp.StatusCode))
 	}
 
 	//get jwt from cookies
 	for _, cookie := range resp.Cookies() {
-		if cookie.Name == JWT_cookie_name {
+		if cookie.Name == JwtCookieName {
 			if cookie.Value != "" {
 				return cookie.Value, nil
 			} else {
@@ -50,5 +54,5 @@ func (h *Handler) Login(login string, password string) (jwt string, err error) {
 			}
 		}
 	}
-	return "", fmt.Errorf("no cookies with name `%v`", JWT_cookie_name)
+	return "", fmt.Errorf("no cookies with name `%v`", JwtCookieName)
 }

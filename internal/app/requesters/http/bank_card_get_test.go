@@ -1,7 +1,6 @@
 package http
 
 import (
-	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"io"
@@ -9,72 +8,63 @@ import (
 	"net/http/httptest"
 	"testing"
 	"yandex_GophKeeper_client/config"
+	"yandex_GophKeeper_client/internal/app/entities"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces/mocks"
 )
 
-func TestHandler_Login(t *testing.T) {
+func TestHandler_GetBankCard(t *testing.T) {
 	type fields struct {
 		Conf       config.AppConfig
 		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
-		login    string
-		password string
+		lastFourDigits string
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantJwt string
-		wantErr bool
+		name       string
+		fields     fields
+		args       args
+		wantCard   entities.BankCard
+		wantErr    bool
+		httpStatus int
+		httpBody   string
 	}{
 		{
-			name: "Normal",
+			name: "Normal response",
 			fields: fields{
-				Conf: config.AppConfig{
-					UserDataPath:        "",
-					APIAddress:          "http://192.0.0.2:8080/testapi",
-					LogLevel:            "",
-					MaxBinDataChunkSize: 0,
-				},
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(lt, http.MethodPost, req.Method, "request method must be POST")
-						assert.Equal(lt, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
+						assert.Equal(lt, http.MethodGet, req.Method, "request method must be GET")
+						assert.Equal(lt, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
+
 						bodyBytes, err := io.ReadAll(req.Body)
 						assert.NoError(lt, err, "cant read request body")
-						body := string(bodyBytes)
-						assert.Equal(lt, `{"login":"testlogin@example.com","password":"testpassword"}`, body, "wrong request body")
+						assert.Equal(lt, "1234", string(bodyBytes), "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
-						http.SetCookie(responseWriter, &http.Cookie{
-							Name:  JWT_cookie_name,
-							Value: "test.jwt.token",
-						})
 						responseWriter.WriteHeader(http.StatusOK)
+						responseWriter.Write([]byte(`{"PAN":"1234567890123456","expires_at":"12/24","owner_lastname":"Ivanov","owner_firstname":"Ivan"}`))
 						return responseWriter.Result(), nil
 					})
 					return client
 				},
 			},
 			args: args{
-				login:    "testlogin@example.com",
-				password: "testpassword",
+				lastFourDigits: "1234",
 			},
-			wantJwt: "test.jwt.token",
+			wantCard: entities.BankCard{
+				PAN:            "1234567890123456",
+				ExpiresAt:      "12/24",
+				OwnerLastname:  "Ivanov",
+				OwnerFirstname: "Ivan",
+			},
 			wantErr: false,
 		},
 		{
-			name: "Internal Server Error (no cookie)",
+			name: "Internal server error response",
 			fields: fields{
-				Conf: config.AppConfig{
-					UserDataPath:        "",
-					APIAddress:          "http://192.0.0.2:8080/testapi",
-					LogLevel:            "",
-					MaxBinDataChunkSize: 0,
-				},
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -86,77 +76,67 @@ func TestHandler_Login(t *testing.T) {
 				},
 			},
 			args: args{
-				login:    "testlogin@example.com",
-				password: "testpassword",
+				lastFourDigits: "1234",
 			},
-			wantJwt: "",
-			wantErr: true,
+			wantCard: entities.BankCard{},
+			wantErr:  true,
 		},
 		{
-			name: "HTTP Client error",
+			name: "Empty response body",
 			fields: fields{
-				Conf: config.AppConfig{
-					UserDataPath:        "",
-					APIAddress:          "http://192.0.0.2:8080/testapi",
-					LogLevel:            "",
-					MaxBinDataChunkSize: 0,
-				},
-				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
-					client := mocks.NewMockHTTPClient(c)
-					client.EXPECT().Do(gomock.Any()).Return(nil, fmt.Errorf("test error"))
-					return client
-				},
-			},
-			args: args{
-				login:    "testlogin@example.com",
-				password: "testpassword",
-			},
-			wantJwt: "",
-			wantErr: true,
-		},
-		{
-			name: "Status created, but no cookie",
-			fields: fields{
-				Conf: config.AppConfig{
-					UserDataPath:        "",
-					APIAddress:          "http://192.0.0.2:8080/testapi",
-					LogLevel:            "",
-					MaxBinDataChunkSize: 0,
-				},
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusCreated)
+						responseWriter.WriteHeader(http.StatusOK)
 						return responseWriter.Result(), nil
 					})
 					return client
 				},
 			},
 			args: args{
-				login:    "testlogin@example.com",
-				password: "testpassword",
+				lastFourDigits: "1234",
 			},
-			wantJwt: "",
-			wantErr: true,
+			wantCard: entities.BankCard{},
+			wantErr:  true,
+		},
+		{
+			name: "Bad json in response",
+			fields: fields{
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
+					client := mocks.NewMockHTTPClient(c)
+					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
+						responseWriter := httptest.NewRecorder()
+						responseWriter.WriteHeader(http.StatusOK)
+						responseWriter.Write([]byte(`{bad json}`))
+						return responseWriter.Result(), nil
+					})
+					return client
+				},
+			},
+			args: args{
+				lastFourDigits: "1234",
+			},
+			wantCard: entities.BankCard{},
+			wantErr:  true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := gomock.NewController(t)
-			h := &Handler{
-				Conf:       tt.fields.Conf,
+			h := &Requester{
 				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
-			gotJwt, err := h.Login(tt.args.login, tt.args.password)
+			gotCard, err := h.GetBankCard(tt.args.lastFourDigits)
 
 			if tt.wantErr {
-				assert.Error(t, err, "no error, but have to")
+				assert.Error(t, err, "expected an error but got none")
 			} else {
-				assert.NoError(t, err, "some error have happened")
+				assert.NoError(t, err, "unexpected error occurred")
 			}
 
-			assert.Equal(t, tt.wantJwt, gotJwt, "wrong jwt value")
+			assert.Equal(t, tt.wantCard, gotCard, "unexpected card data")
 		})
 	}
 }
