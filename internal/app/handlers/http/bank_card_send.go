@@ -31,7 +31,7 @@ func (h *Handler) SendBankCard(PAN string, ownerFirstName string, ownerLastName 
 	req.Header.Set("Content-Type", "application/json")
 
 	//send request
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := h.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("cant send request, err: %w", err)
 	}

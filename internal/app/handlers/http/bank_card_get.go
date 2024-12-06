@@ -21,7 +21,7 @@ func (h *Handler) GetBankCard(lastFourDigits string) (entities.BankCard, error) 
 	req.Header.Set("Content-Type", "text/plain")
 
 	//send request
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := h.HTTPClient.Do(req)
 	if err != nil {
 		return entities.BankCard{}, fmt.Errorf("cant send request, err: %w", err)
 	}
