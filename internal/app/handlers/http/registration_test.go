@@ -16,7 +16,7 @@ import (
 func TestHandler_RegisterUser(t *testing.T) {
 	type fields struct {
 		Conf       config.AppConfig
-		HTTPClient func(c *gomock.Controller) requiredInterfaces.HTTPClient
+		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
 		login    string
@@ -38,15 +38,15 @@ func TestHandler_RegisterUser(t *testing.T) {
 					LogLevel:            "",
 					MaxBinDataChunkSize: 0,
 				},
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(t, http.MethodPost, req.Method, "request method must be POST")
-						assert.Equal(t, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
+						assert.Equal(lt, http.MethodPost, req.Method, "request method must be POST")
+						assert.Equal(lt, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
 						bodyBytes, err := io.ReadAll(req.Body)
-						assert.NoError(t, err, "cant read request body")
+						assert.NoError(lt, err, "cant read request body")
 						body := string(bodyBytes)
-						assert.Equal(t, `{"login":"testlogin@example.com","password":"testpassword"}`, body, "wrong request body")
+						assert.Equal(lt, `{"login":"testlogin@example.com","password":"testpassword"}`, body, "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
 						http.SetCookie(responseWriter, &http.Cookie{
@@ -75,7 +75,7 @@ func TestHandler_RegisterUser(t *testing.T) {
 					LogLevel:            "",
 					MaxBinDataChunkSize: 0,
 				},
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -101,7 +101,7 @@ func TestHandler_RegisterUser(t *testing.T) {
 					LogLevel:            "",
 					MaxBinDataChunkSize: 0,
 				},
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).Return(nil, fmt.Errorf("test error"))
 					return client
@@ -123,7 +123,7 @@ func TestHandler_RegisterUser(t *testing.T) {
 					LogLevel:            "",
 					MaxBinDataChunkSize: 0,
 				},
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -146,7 +146,7 @@ func TestHandler_RegisterUser(t *testing.T) {
 			c := gomock.NewController(t)
 			h := &Handler{
 				Conf:       tt.fields.Conf,
-				HTTPClient: tt.fields.HTTPClient(c),
+				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
 			gotJwt, err := h.RegisterUser(tt.args.login, tt.args.password)
 			if tt.wantErr {

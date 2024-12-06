@@ -8,27 +8,24 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"yandex_GophKeeper_client/config"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces"
 	"yandex_GophKeeper_client/internal/app/requiredInterfaces/mocks"
 )
 
-func TestHandler_GetText(t *testing.T) {
+func TestHandler_SendText(t *testing.T) {
 	type fields struct {
-		Conf       config.AppConfig
 		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
-		lastFourDigits string
+		textName string
+		text     string
 	}
 	tests := []struct {
 		name       string
 		fields     fields
 		args       args
-		wantText   string
 		wantErr    bool
 		httpStatus int
-		httpBody   string
 	}{
 		{
 			name: "Valid response",
@@ -36,26 +33,26 @@ func TestHandler_GetText(t *testing.T) {
 				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(lt, http.MethodGet, req.Method, "request method must be GET")
-						assert.Equal(lt, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
+						assert.Equal(lt, http.MethodPost, req.Method, "request method must be POST")
+						assert.Equal(lt, "application/json", req.Header.Get("Content-Type"), "content type must be application/json")
 
 						bodyBytes, err := io.ReadAll(req.Body)
 						assert.NoError(lt, err, "can`t read request body")
-						assert.Equal(lt, "1234", string(bodyBytes), "wrong request body")
+						expectedBody := `{"text_name":"example text","text":"This is a test text"}`
+						assert.JSONEq(lt, expectedBody, string(bodyBytes), "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusOK)
-						responseWriter.WriteString("Expected Text Content")
+						responseWriter.WriteHeader(http.StatusCreated)
 						return responseWriter.Result(), nil
 					})
 					return client
 				},
 			},
 			args: args{
-				lastFourDigits: "1234",
+				textName: "example text",
+				text:     "This is a test text",
 			},
-			wantText: "Expected Text Content",
-			wantErr:  false,
+			wantErr: false,
 		},
 		{
 			name: "Bad request response",
@@ -71,29 +68,10 @@ func TestHandler_GetText(t *testing.T) {
 				},
 			},
 			args: args{
-				lastFourDigits: "1234",
+				textName: "exampleText",
+				text:     "This is a test text",
 			},
-			wantText: "",
-			wantErr:  true,
-		},
-		{
-			name: "Empty response body",
-			fields: fields{
-				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
-					client := mocks.NewMockHTTPClient(c)
-					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						responseWriter := httptest.NewRecorder()
-						responseWriter.WriteHeader(http.StatusOK)
-						return responseWriter.Result(), nil
-					})
-					return client
-				},
-			},
-			args: args{
-				lastFourDigits: "1234",
-			},
-			wantText: "",
-			wantErr:  false,
+			wantErr: true,
 		},
 		{
 			name: "HTTP client error",
@@ -105,10 +83,10 @@ func TestHandler_GetText(t *testing.T) {
 				},
 			},
 			args: args{
-				lastFourDigits: "1234",
+				textName: "exampleText",
+				text:     "This is a test text",
 			},
-			wantText: "",
-			wantErr:  true,
+			wantErr: true,
 		},
 	}
 
@@ -118,15 +96,13 @@ func TestHandler_GetText(t *testing.T) {
 			h := &Handler{
 				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
-			gotText, err := h.GetText(tt.args.lastFourDigits)
+			err := h.SendText(tt.args.textName, tt.args.text)
 
 			if tt.wantErr {
 				assert.Error(t, err, "expected an error but got none")
 			} else {
 				assert.NoError(t, err, "unexpected error occurred")
 			}
-
-			assert.Equal(t, tt.wantText, gotText, "unexpected text content")
 		})
 	}
 }

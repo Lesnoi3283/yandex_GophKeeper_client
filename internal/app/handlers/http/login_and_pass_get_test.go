@@ -16,7 +16,7 @@ import (
 func TestHandler_GetLoginAndPassword(t *testing.T) {
 	type fields struct {
 		Conf       config.AppConfig
-		HTTPClient func(c *gomock.Controller) requiredInterfaces.HTTPClient
+		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
 		login string
@@ -33,15 +33,15 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 		{
 			name: "Normal response",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(t, http.MethodGet, req.Method, "request method must be GET")
-						assert.Equal(t, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
+						assert.Equal(lt, http.MethodGet, req.Method, "request method must be GET")
+						assert.Equal(lt, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
 
 						bodyBytes, err := io.ReadAll(req.Body)
-						assert.NoError(t, err, "cant read request body")
-						assert.Equal(t, "testlogin@example.com", string(bodyBytes), "wrong request body")
+						assert.NoError(lt, err, "cant read request body")
+						assert.Equal(lt, "testlogin@example.com", string(bodyBytes), "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
 						responseWriter.WriteHeader(http.StatusOK)
@@ -58,9 +58,9 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Non-OK response",
+			name: "Internal server error response",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -79,7 +79,7 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 		{
 			name: "Empty response body",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -98,7 +98,7 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 		{
 			name: "HTTP Client error",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).Return(nil, fmt.Errorf("test error"))
 					return client
@@ -116,7 +116,7 @@ func TestHandler_GetLoginAndPassword(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := gomock.NewController(t)
 			h := &Handler{
-				HTTPClient: tt.fields.HTTPClient(c),
+				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
 			gotPwd, err := h.GetLoginAndPassword(tt.args.login)
 

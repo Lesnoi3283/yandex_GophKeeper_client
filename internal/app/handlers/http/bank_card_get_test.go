@@ -16,7 +16,7 @@ import (
 func TestHandler_GetBankCard(t *testing.T) {
 	type fields struct {
 		Conf       config.AppConfig
-		HTTPClient func(c *gomock.Controller) requiredInterfaces.HTTPClient
+		HTTPClient func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient
 	}
 	type args struct {
 		lastFourDigits string
@@ -33,15 +33,15 @@ func TestHandler_GetBankCard(t *testing.T) {
 		{
 			name: "Normal response",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
-						assert.Equal(t, http.MethodGet, req.Method, "request method must be GET")
-						assert.Equal(t, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
+						assert.Equal(lt, http.MethodGet, req.Method, "request method must be GET")
+						assert.Equal(lt, "text/plain", req.Header.Get("Content-Type"), "content type must be text/plain")
 
 						bodyBytes, err := io.ReadAll(req.Body)
-						assert.NoError(t, err, "cant read request body")
-						assert.Equal(t, "1234", string(bodyBytes), "wrong request body")
+						assert.NoError(lt, err, "cant read request body")
+						assert.Equal(lt, "1234", string(bodyBytes), "wrong request body")
 
 						responseWriter := httptest.NewRecorder()
 						responseWriter.WriteHeader(http.StatusOK)
@@ -57,15 +57,15 @@ func TestHandler_GetBankCard(t *testing.T) {
 			wantCard: entities.BankCard{
 				PAN:            "1234567890123456",
 				ExpiresAt:      "12/24",
-				OwnerLastname:  "Ivan",
-				OwnerFirstname: "Ivanov",
+				OwnerLastname:  "Ivanov",
+				OwnerFirstname: "Ivan",
 			},
 			wantErr: false,
 		},
 		{
 			name: "Internal server error response",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -84,7 +84,7 @@ func TestHandler_GetBankCard(t *testing.T) {
 		{
 			name: "Empty response body",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -103,7 +103,7 @@ func TestHandler_GetBankCard(t *testing.T) {
 		{
 			name: "Bad json in response",
 			fields: fields{
-				HTTPClient: func(c *gomock.Controller) requiredInterfaces.HTTPClient {
+				HTTPClient: func(c *gomock.Controller, lt *testing.T) requiredInterfaces.HTTPClient {
 					client := mocks.NewMockHTTPClient(c)
 					client.EXPECT().Do(gomock.Any()).DoAndReturn(func(req *http.Request) (*http.Response, error) {
 						responseWriter := httptest.NewRecorder()
@@ -126,7 +126,7 @@ func TestHandler_GetBankCard(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := gomock.NewController(t)
 			h := &Handler{
-				HTTPClient: tt.fields.HTTPClient(c),
+				HTTPClient: tt.fields.HTTPClient(c, t),
 			}
 			gotCard, err := h.GetBankCard(tt.args.lastFourDigits)
 
