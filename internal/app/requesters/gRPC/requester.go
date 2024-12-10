@@ -12,8 +12,8 @@ import (
 
 const mdJWTKey = "jwt"
 
-// GRPCRequester can send request to a gRPC server.
-type GRPCRequester struct {
+// GRPCGophKeeperRequester can send request to a gRPC server.
+type GRPCGophKeeperRequester struct {
 	C   proto.GophKeeperServiceClient
 	JWT string
 	// MaxBinDataChunkSize - value in bytes.
@@ -21,8 +21,8 @@ type GRPCRequester struct {
 	Logger              *zap.SugaredLogger
 }
 
-func NewGRPCRequester(client proto.GophKeeperServiceClient, jwt string, maxBinDataChunkSize int, logger *zap.SugaredLogger) *GRPCRequester {
-	return &GRPCRequester{
+func NewGRPCRequester(client proto.GophKeeperServiceClient, jwt string, maxBinDataChunkSize int, logger *zap.SugaredLogger) *GRPCGophKeeperRequester {
+	return &GRPCGophKeeperRequester{
 		C:                   client,
 		JWT:                 jwt,
 		MaxBinDataChunkSize: maxBinDataChunkSize,
@@ -30,7 +30,13 @@ func NewGRPCRequester(client proto.GophKeeperServiceClient, jwt string, maxBinDa
 	}
 }
 
-func (g *GRPCRequester) SendBinFile(path string, dataName string) error {
+func (g *GRPCGophKeeperRequester) SendBinFile(path string, dataName string) error {
+	if len(path) == 0 {
+		return fmt.Errorf("path is empty")
+	}
+	if len(dataName) == 0 {
+		return fmt.Errorf("dataName is empty")
+	}
 	// open file
 	file, err := os.Open(path)
 	if err != nil {
@@ -57,10 +63,11 @@ func (g *GRPCRequester) SendBinFile(path string, dataName string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read file: %w", err)
 		}
-		chunk := append([]byte(nil), buffer[:n]...)
+
+		//prepare chunk
 		reqChunk := &proto.SaveBinDataRequest{
 			DataName: dataName,
-			Chunk:    chunk,
+			Chunk:    buffer[:n],
 		}
 
 		// send chunk
@@ -77,7 +84,7 @@ func (g *GRPCRequester) SendBinFile(path string, dataName string) error {
 	return nil
 }
 
-func (g *GRPCRequester) GetBinFile(fileName, outputPath string) error {
+func (g *GRPCGophKeeperRequester) GetBinFile(fileName, outputPath string) error {
 	//put jwt into ctx
 	ctx := metadata.AppendToOutgoingContext(context.Background(), mdJWTKey, g.JWT)
 

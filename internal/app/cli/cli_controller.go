@@ -15,64 +15,38 @@ import (
 	"yandex_GophKeeper_client/pkg/gophKeeperErrors"
 )
 
-// Please use these constants only in code, don`t ask user to input these numbers.
-// Example:
-//
-//	Bad:
-//	 fmt.Printf("Type '%d' to sign in and '%d' to sign up\n", commandLogin, commandRegister)
-//	Good:
-//	 fmt.Printf("Type '1' to sign in and '2' to sign up\n")
-//	 //and then translate 1 and 2 to these constants yourself
-//
-// Explanation: its strange for user to see in 1 his step commands with numbers '1' and '2', and then '32' '33' on a second step.
 const (
-	commandRegister = iota
-	commandLogin
-	commandSaveData
-	commandGetData
-	commandBankCard
-	commandTextData
-	commandLoginAndPassword
-	commandBinFile
+	errReadingInput = "Error reading input: %v"
+	errSendingData  = "Error sending data: %v"
 )
 
 // CommandsController is a command-line listener.
 type CommandsController struct {
 	Conf          config.AppConfig
 	HTTPRequester *http_requesters.Requester
-	GRPCRequester *grpc_requests.GRPCRequester
+	GRPCRequester *grpc_requests.GRPCGophKeeperRequester
 	Logger        *zap.SugaredLogger
 }
 
-func NewCommandsController(conf config.AppConfig, HTTPRequester *http_requesters.Requester, GRPCRequester *grpc_requests.GRPCRequester, logger *zap.SugaredLogger) *CommandsController {
+func NewCommandsController(conf config.AppConfig, HTTPRequester *http_requesters.Requester, GRPCRequester *grpc_requests.GRPCGophKeeperRequester, logger *zap.SugaredLogger) *CommandsController {
 	return &CommandsController{Conf: conf, HTTPRequester: HTTPRequester, GRPCRequester: GRPCRequester, Logger: logger}
 }
 
 // Run serves user`s commands until ctx is done.
 func (c *CommandsController) Run(ctx context.Context) {
 	fmt.Println("Auth:")
-	for {
-		err := c.auth()
-		errWithHttpCode := &gophKeeperErrors.ErrWithHTTPCode{}
-		if errors.As(err, &errWithHttpCode) {
-			c.Logger.Errorf("Auth error: %v", err)
-			if errWithHttpCode.Code() == http.StatusUnauthorized {
-				fmt.Println("Wrong username or password")
-			} else {
-				fmt.Printf("Something went wrong, error: %v\n", errWithHttpCode)
-			}
-		} else if err != nil {
-			c.Logger.Errorf("Auth error: %v", err)
-			fmt.Printf("Auth error: %v\n", err)
-		} else {
-			break
-		}
+
+	err := c.authLoop()
+
+	if err != nil {
+		fmt.Printf("Fatal auth error: %v\n", err)
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.Logger.Info("Stopping listening commands")
+			c.Logger.Info("Stopping listening commands due to ctx is done")
+			fmt.Println("Stopping listening commands")
 			return
 		default:
 			c.runMainMenu()
@@ -80,10 +54,11 @@ func (c *CommandsController) Run(ctx context.Context) {
 	}
 }
 
-// auth asks user to sign in or sign up and process it.
-func (c *CommandsController) auth() error {
+// authLoop asks user to sign in or sign up and process it.
+func (c *CommandsController) authLoop() error {
 	for {
-		//auth menu
+
+		//authLoop menu
 		fmt.Println("1 - sign in")
 		fmt.Println("2 - sign up")
 		fmt.Print("Select: ")
@@ -91,6 +66,7 @@ func (c *CommandsController) auth() error {
 		var command int
 		_, err := fmt.Scanf("%d", &command)
 		if err != nil {
+			fmt.Printf("Cant read input, err: %v\n", err)
 			c.Logger.Errorf("Cant scan command, err: %v", err)
 			continue
 		}
@@ -101,21 +77,41 @@ func (c *CommandsController) auth() error {
 		fmt.Println("Enter username:")
 		_, err = fmt.Scanf("%s", &userName)
 		if err != nil {
-			return fmt.Errorf("cant scan username, err: %w", err)
+			fmt.Printf("Cant read input, err: %v\n", err)
+			continue
 		}
 
 		fmt.Println("Enter password:")
 		_, err = fmt.Scanf("%s", &password)
 		if err != nil {
-			return fmt.Errorf("cant scan password, err: %w", err)
+			fmt.Printf("Cant read input, err: %v\n", err)
+			continue
 		}
 
 		// process command
 		switch command {
 		case 1:
-			return c.login(userName, password)
+			err := c.login(userName, password)
+			if errors.Is(err, gophKeeperErrors.NewErrWrongLoginOrPassword()) {
+				fmt.Println("Wrong login or password (or user not exists)")
+				continue
+			} else if err != nil {
+				return fmt.Errorf("login error: %w", err)
+			} else {
+				fmt.Println("Success!")
+				return nil
+			}
 		case 2:
-			return c.register(userName, password)
+			err := c.register(userName, password)
+			if errors.Is(err, gophKeeperErrors.NewErrUserAlreadyExists()) {
+				fmt.Println("User already exists")
+				continue
+			} else if err != nil {
+				return fmt.Errorf("register error: %w", err)
+			} else {
+				fmt.Println("Success!")
+				return nil
+			}
 		default:
 			fmt.Println("Invalid command, try again.")
 		}
@@ -123,12 +119,13 @@ func (c *CommandsController) auth() error {
 }
 
 // login helps user to sign in.
+// Also, it sets JWT to CommandsController`s requesters.
 func (c *CommandsController) login(userName, password string) error {
 	jwt, err := c.HTTPRequester.Login(userName, password)
 	errWithHttpCode := &gophKeeperErrors.ErrWithHTTPCode{}
 	if errors.As(err, &errWithHttpCode) {
 		if errWithHttpCode.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("wrong username or password (or user not exists)")
+			return gophKeeperErrors.NewErrWrongLoginOrPassword()
 		} else {
 			return fmt.Errorf("login error: %w", err)
 		}
@@ -142,31 +139,30 @@ func (c *CommandsController) login(userName, password string) error {
 
 	c.HTTPRequester.JWT = jwt
 	c.GRPCRequester.JWT = jwt
-	fmt.Println("Success!")
 	return nil
 }
 
 // register helps user to signup.
+// Also, it sets JWT to CommandsController`s requesters.
 func (c *CommandsController) register(userName, password string) error {
 	jwt, err := c.HTTPRequester.RegisterUser(userName, password)
 	errWithHttpCode := &gophKeeperErrors.ErrWithHTTPCode{}
 	if errors.As(err, &errWithHttpCode) {
 		if errWithHttpCode.StatusCode == http.StatusConflict {
-			return fmt.Errorf("this user already exists")
+			return gophKeeperErrors.NewErrUserAlreadyExists()
 		} else {
-			return fmt.Errorf("auth error: %w", err)
+			return fmt.Errorf("authLoop error: %w", err)
 		}
 	} else if err != nil {
-		return fmt.Errorf("auth error: %w", err)
+		return fmt.Errorf("authLoop error: %w", err)
 	}
 
 	if jwt == "" {
-		return fmt.Errorf("auth error: empty jwt")
+		return fmt.Errorf("authLoop error: empty jwt")
 	}
 
 	c.HTTPRequester.JWT = jwt
 	c.GRPCRequester.JWT = jwt
-	fmt.Println("Success!")
 	return nil
 }
 
@@ -219,7 +215,7 @@ func (c *CommandsController) runSaveDataMenu() {
 		var userCmd int
 		_, err := fmt.Scan(&userCmd)
 		if err != nil {
-			c.Logger.Errorf("Error reading command: %v", err)
+			c.Logger.Errorf(errReadingInput, err)
 			fmt.Println("Please enter a valid number")
 			continue
 		}
@@ -257,7 +253,7 @@ func (c *CommandsController) runGetDataMenu() {
 		var userCmd int
 		_, err := fmt.Scan(&userCmd)
 		if err != nil {
-			c.Logger.Errorf("Error reading command: %v", err)
+			c.Logger.Errorf(errReadingInput, err)
 			fmt.Println("Please enter a valid number.")
 			continue
 		}
@@ -292,7 +288,7 @@ func (c *CommandsController) saveBankCardData() {
 	reader := bufio.NewReader(os.Stdin)
 	pan, err := reader.ReadString('\n')
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v\n", err)
+		c.Logger.Errorf(errReadingInput, err)
 		fmt.Println("Incorrect input.")
 		return
 	}
@@ -301,7 +297,7 @@ func (c *CommandsController) saveBankCardData() {
 	fmt.Println("OwnerFirstName:")
 	_, err = fmt.Scan(&ownerFirstName)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		fmt.Println("Incorrect input.")
 		return
 	}
@@ -309,7 +305,7 @@ func (c *CommandsController) saveBankCardData() {
 	fmt.Println("OwnerLastName:")
 	_, err = fmt.Scan(&ownerLastName)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		fmt.Println("Incorrect input.")
 		return
 
@@ -318,7 +314,7 @@ func (c *CommandsController) saveBankCardData() {
 	fmt.Println("ExpiresDate:")
 	_, err = fmt.Scan(&expiresDate)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		fmt.Println("Incorrect input.")
 		return
 	}
@@ -332,9 +328,9 @@ func (c *CommandsController) saveBankCardData() {
 		} else {
 			fmt.Println("Something went wrong.")
 		}
-		c.Logger.Errorf("Error sending bank card: %v", err)
+		c.Logger.Errorf(errSendingData, err)
 	} else if err != nil {
-		c.Logger.Errorf("Error sending bank card: %v", err)
+		c.Logger.Errorf(errSendingData, err)
 	}
 }
 
@@ -346,14 +342,14 @@ func (c *CommandsController) saveLoginAndPasswordData() {
 	fmt.Println("Enter login:")
 	_, err := fmt.Scan(&login)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		return
 	}
 
 	fmt.Println("Enter password:")
 	_, err = fmt.Scan(&password)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		return
 	}
 
@@ -366,9 +362,9 @@ func (c *CommandsController) saveLoginAndPasswordData() {
 		} else {
 			fmt.Println("Something went wrong.")
 		}
-		c.Logger.Errorf("Error sending login and password : %v", err)
+		c.Logger.Errorf(errSendingData, err)
 	} else if err != nil {
-		c.Logger.Errorf("Error sending lgin and password: %v", err)
+		c.Logger.Errorf(errSendingData, err)
 	}
 }
 
@@ -380,7 +376,7 @@ func (c *CommandsController) saveTextData() {
 	fmt.Println("Enter a text name:")
 	_, err := fmt.Scan(&textName)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		fmt.Println("Incorrect input.")
 	}
 
@@ -389,7 +385,7 @@ func (c *CommandsController) saveTextData() {
 	fmt.Print("Enter a text: ")
 	text, err = reader.ReadString('\n')
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		fmt.Println("Incorrect input.")
 		return
 	}
@@ -404,9 +400,9 @@ func (c *CommandsController) saveTextData() {
 		} else {
 			fmt.Println("Something went wrong.")
 		}
-		c.Logger.Errorf("Error sending text data: %v", err)
+		c.Logger.Errorf(errSendingData, err)
 	} else if err != nil {
-		c.Logger.Errorf("Error sending text data: %v", err)
+		c.Logger.Errorf(errSendingData, err)
 	}
 }
 
@@ -417,7 +413,7 @@ func (c *CommandsController) saveBinFileData() {
 	fmt.Println("Enter a path to a file:")
 	_, err := fmt.Scan(&path)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		return
 	}
 	splits := strings.Split(path, string(os.PathSeparator))
@@ -425,7 +421,7 @@ func (c *CommandsController) saveBinFileData() {
 	//ask api
 	err = c.GRPCRequester.SendBinFile(path, splits[len(splits)-1])
 	if err != nil {
-		c.Logger.Errorf("Error sending the file: %v", err)
+		c.Logger.Errorf(errSendingData, err)
 		fmt.Println("Something went wrong.")
 		return
 	}
@@ -438,7 +434,7 @@ func (c *CommandsController) getBankCardData() {
 	fmt.Println("Enter a last four digits:")
 	_, err := fmt.Scan(&lastFourDigits)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		return
 	}
 
@@ -522,14 +518,30 @@ func (c *CommandsController) getBinFileData() {
 	fmt.Println("Enter a file name:")
 	_, err := fmt.Scan(&fileName)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		return
 	}
 	fmt.Println("Enter an output path:")
 	_, err = fmt.Scan(&outputPath)
 	if err != nil {
-		c.Logger.Errorf("Error reading input: %v", err)
+		c.Logger.Errorf(errReadingInput, err)
 		return
+	}
+
+	//check if file already exists
+	stat, _ := os.Stat(outputPath)
+	if stat != nil {
+		fmt.Println("Output file already exists. Override? (y/n)")
+		var input string
+		_, err = fmt.Scan(&input)
+		if err != nil {
+			c.Logger.Errorf(errReadingInput, err)
+			return
+		}
+		if input != "y" && input != "Y" {
+			fmt.Println("Ok, going back")
+			return
+		}
 	}
 
 	//ask api

@@ -41,13 +41,13 @@ func (h *Requester) Login(login string, password string) (jwt string, err error)
 	}
 
 	//get jwt from cookies
-	for _, cookie := range resp.Cookies() {
+	return getJWTFromCookies(resp.Cookies())
+}
+
+func getJWTFromCookies(cookies []*http.Cookie) (string, error) {
+	for _, cookie := range cookies {
 		if cookie.Name == JwtCookieName {
-			if cookie.Value != "" {
-				return cookie.Value, nil
-			} else {
-				return "", fmt.Errorf("JWT cookie is empty")
-			}
+			return cookie.Value, nil
 		}
 	}
 	return "", fmt.Errorf("no cookies with name `%v`", JwtCookieName)

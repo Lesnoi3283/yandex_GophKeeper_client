@@ -26,10 +26,6 @@ func (h *Requester) RegisterUser(login string, password string) (jwt string, err
 	if err != nil {
 		return "", fmt.Errorf("can`t create request: %v", err)
 	}
-	req.AddCookie(&http.Cookie{
-		Name:  JwtCookieName,
-		Value: h.JWT,
-	})
 	req.Header.Set("Content-Type", "application/json")
 
 	//send request
